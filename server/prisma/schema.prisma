@@ -1,0 +1,125 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String         @id @default(cuid())
+  name          String
+  email         String         @unique
+  passwordHash  String
+  role          String         // ADMIN | MANAGER | APPROVER | REQUESTER
+  managerId     String?
+  manager       User?          @relation("Reports", fields: [managerId], references: [id])
+  reports       User[]         @relation("Reports")
+  active        Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  requests      Request[]
+  notifications Notification[]
+}
+
+model RequestType {
+  id          String         @id @default(cuid())
+  key         String         @unique        // e.g. "LEAVE"
+  name        String
+  description String         @default("")
+  formSchema  String                        // JSON text: FormField[] (see section 4)
+  active      Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  steps       WorkflowStep[]
+  requests    Request[]
+}
+
+model WorkflowStep {
+  id             String      @id @default(cuid())
+  requestTypeId  String
+  requestType    RequestType @relation(fields: [requestTypeId], references: [id], onDelete: Cascade)
+  order          Int                        // 1-based, unique per request type
+  name           String
+  approverKind   String                     // ROLE | USER | REQUESTER_MANAGER
+  approverRole   String?                    // used when approverKind = ROLE
+  approverUserId String?                    // used when approverKind = USER
+  condition      String?                    // JSON text: {field, op, value} or null = always runs
+
+  @@unique([requestTypeId, order])
+}
+
+model Request {
+  id               String        @id @default(cuid())
+  refNo            String        @unique       // e.g. "REQ-2026-0001"
+  requestTypeId    String
+  requestType      RequestType   @relation(fields: [requestTypeId], references: [id])
+  requesterId      String
+  requester        User          @relation(fields: [requesterId], references: [id])
+  title            String
+  data             String                      // JSON text of submitted form values
+  status           String                      // DRAFT | PENDING | CHANGES_REQUESTED | APPROVED | REJECTED | CANCELLED
+  revision         Int           @default(1)
+  currentStepOrder Int?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  submittedAt      DateTime?
+  completedAt      DateTime?
+  steps            RequestStep[]
+  comments         Comment[]
+  auditLogs        AuditLog[]
+}
+
+model RequestStep {
+  id             String    @id @default(cuid())
+  requestId      String
+  request        Request   @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  revision       Int
+  order          Int
+  name           String
+  approverKind   String
+  approverRole   String?
+  approverUserId String?
+  assignedUserId String?               // resolved when kind = REQUESTER_MANAGER
+  status         String                // WAITING | PENDING | APPROVED | REJECTED | SKIPPED | CHANGES_REQUESTED
+  decidedById    String?
+  decidedAt      DateTime?
+
+  @@index([requestId, revision, order])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  requestId String
+  request   Request  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  authorId  String
+  body      String
+  createdAt DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  seq       Int      @unique
+  requestId String?
+  request   Request? @relation(fields: [requestId], references: [id])
+  actorId   String?
+  actorName String
+  action    String   // see section 5.3
+  details   String   // JSON text
+  prevHash  String
+  hash      String
+  createdAt DateTime @default(now())
+
+  @@index([requestId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  message   String
+  requestId String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
