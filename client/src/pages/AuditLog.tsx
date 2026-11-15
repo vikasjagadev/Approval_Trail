@@ -51,7 +51,8 @@ export const AuditLog: React.FC = () => {
     if (to) params.append('to', to);
 
     const token = localStorage.getItem('token');
-    fetch(`/api/audit/export.csv?${params.toString()}`, {
+    const apiBase = import.meta.env.VITE_API_BASE_URL || '/api';
+    fetch(`${apiBase}/audit/export.csv?${params.toString()}`, {
       headers: {
         Authorization: `Bearer ${token}`,
       },
